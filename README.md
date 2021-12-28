@@ -1,6 +1,6 @@
 # Chee-Subgraph
 
-[Chee](https://chee.io/) is an open-source protocol for algorithmic, efficient Money Markets on the Binance Smart Chain. This Subgraph ingests the contracts of Chee protocol.
+[Chee](https://chee.io/) is an open-source protocol for algorithmic, efficient Money Markets on the Celo Chain. This Subgraph ingests the contracts of Chee protocol.
 
 ## Networks and Performance
 

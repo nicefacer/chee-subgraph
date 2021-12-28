@@ -58,7 +58,7 @@ export function createMarket(marketAddress: string): Market {
     )
     market.underlyingDecimals = 18
     market.underlyingPrice = BigDecimal.fromString('1')
-    market.underlyingName = 'Binance Coin'
+    market.underlyingName = 'Celo Coin'
     market.underlyingSymbol = 'CELO'
     market.underlyingPriceUSD = zeroBD
     // It is all other CBEP20 contracts
