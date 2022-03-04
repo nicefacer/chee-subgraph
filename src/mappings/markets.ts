@@ -16,7 +16,7 @@ import {
 } from './helpers'
 
 let vUSDCAddress = '0x0000000000000000000000000000000000000000'
-let cCELOAddress = '0x009cd1b273cff1f371f6a1d90e046d5439460f7c'
+let cCELOAddress = '0x9de4171edc1f69ead07f7595bd3bed62d9215532'
 
 // Used for all cBEP20 contracts
 function getTokenPrice(
