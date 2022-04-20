@@ -38,10 +38,13 @@ function getTokenPrice(
   let mantissaDecimalFactor = 18 - underlyingDecimals + 18
   let bdFactor = exponentToBigDecimal(mantissaDecimalFactor)
   let oracle2 = PriceOracle2.bind(oracleAddress)
-  underlyingPrice = oracle2
-    .getUnderlyingPrice(eventAddress)
-    .toBigDecimal()
-    .div(bdFactor)
+  let underlyingCall = oracle2.try_getUnderlyingPrice(eventAddress)
+
+  if (underlyingCall.reverted) {
+    underlyingPrice = zeroBD
+  } else {
+    underlyingPrice = underlyingCall.value.toBigDecimal().div(bdFactor)
+  }
 
   return underlyingPrice
 }
