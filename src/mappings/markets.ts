@@ -35,7 +35,8 @@ function getTokenPrice(
    * Note this returns the value without factoring in token decimals and wei, so we must divide
    * the number by (bnbDecimals - tokenDecimals) and again by the mantissa.
    */
-  let mantissaDecimalFactor = 18 - underlyingDecimals + 18
+  // let mantissaDecimalFactor = 18 - underlyingDecimals + 18
+  let mantissaDecimalFactor = 18
   let bdFactor = exponentToBigDecimal(mantissaDecimalFactor)
   let oracle2 = PriceOracle2.bind(oracleAddress)
   let underlyingCall = oracle2.try_getUnderlyingPrice(eventAddress)
