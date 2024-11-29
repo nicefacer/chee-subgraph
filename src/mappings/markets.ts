@@ -1,11 +1,14 @@
 /* eslint-disable prefer-const */ // to satisfy AS compiler
 
 // For each division by 10, add one to exponent to truncate one significant figure
-import { Address, BigDecimal, BigInt, log } from '@graphprotocol/graph-ts'
-import { Market, Comptroller } from '../types/schema'
-import { PriceOracle2 } from '../types/templates/CToken/PriceOracle2'
-import { BEP20 } from '../types/templates/CToken/BEP20'
-import { CToken } from '../types/templates/CToken/CToken'
+import { Address, BigDecimal, ByteArray, BigInt, log } from '@graphprotocol/graph-ts'
+import { Market} from '../../generated/schema'
+import { PriceOracle2 } from '../../generated/templates/CToken/PriceOracle2'
+import { BEP20 } from '../../generated/templates/CToken/BEP20'
+import { CToken } from '../../generated/templates/CToken/CToken'
+import { Comptroller } from '../../generated/schema'
+
+
 
 import {
   exponentToBigDecimal,
@@ -20,205 +23,278 @@ let cCELOAddress = '0x9de4171edc1f69ead07f7595bd3bed62d9215532'
 
 // Used for all cBEP20 contracts
 function getTokenPrice(
-  blockNumber: i32,
+  blockNumber: BigInt,
   eventAddress: Address,
   underlyingAddress: Address,
-  underlyingDecimals: i32,
+  underlyingDecimals: BigInt
 ): BigDecimal {
-  let comptroller = Comptroller.load('1')
-  let oracleAddress = comptroller.priceOracle as Address
-  let underlyingPrice: BigDecimal
-
-  /* PriceOracle2 is used from starting of Comptroller.
-   * This must use the cToken address.
-   *
-   * Note this returns the value without factoring in token decimals and wei, so we must divide
-   * the number by (bnbDecimals - tokenDecimals) and again by the mantissa.
-   */
-  // let mantissaDecimalFactor = 18 - underlyingDecimals + 18
-  let mantissaDecimalFactor = 18
-  let bdFactor = exponentToBigDecimal(mantissaDecimalFactor)
-  let oracle2 = PriceOracle2.bind(oracleAddress)
-  let underlyingCall = oracle2.try_getUnderlyingPrice(eventAddress)
-
-  if (underlyingCall.reverted) {
-    underlyingPrice = zeroBD
-  } else {
-    underlyingPrice = underlyingCall.value.toBigDecimal().div(bdFactor)
+  let comptroller = Comptroller.load('1');
+  if (comptroller == null) {
+    log.error('Comptroller not found', []);
+    return zeroBD;
   }
 
-  return underlyingPrice
+  let priceOracle = comptroller.priceOracle;
+  if (!priceOracle || priceOracle.equals(ByteArray.fromHexString('0x0000000000000000000000000000000000000000'))) {
+    log.error('priceOracle is null or invalid on Comptroller entity', []);
+    return zeroBD; // Handle the error gracefully and return a default value
+  }
+
+  // Safely convert priceOracle (ByteArray) to Address
+  let oracleAddress = Address.fromBytes(priceOracle);
+  let underlyingPrice: BigDecimal;
+
+  /* PriceOracle2 is used from the start of Comptroller.
+   * This must use the cToken address.
+   *
+   * Note: this returns the value without factoring in token decimals and wei,
+   * so we must divide the number by (bnbDecimals - tokenDecimals) and again by the mantissa.
+   */
+  let mantissaDecimalFactor = BigInt.fromI32(18);
+  let bdFactor = exponentToBigDecimal(mantissaDecimalFactor);
+
+  // Bind the PriceOracle2 contract
+  let oracle2 = PriceOracle2.bind(oracleAddress);
+  let underlyingCall = oracle2.try_getUnderlyingPrice(eventAddress);
+
+  // Handle the call result
+  if (underlyingCall.reverted) {
+    log.warning('PriceOracle2 getUnderlyingPrice reverted for address: {}', [eventAddress.toHexString()]);
+    underlyingPrice = zeroBD;
+  } else {
+    underlyingPrice = underlyingCall.value.toBigDecimal().div(bdFactor);
+  }
+
+  return underlyingPrice;
 }
 
-export function createMarket(marketAddress: string): Market {
-  let market: Market
-  let contract = CToken.bind(Address.fromString(marketAddress))
 
-  // It is cCELO, which has a slightly different interface
+
+export function createMarket(marketAddress: string): Market {
+  let market = new Market(marketAddress); // Define market early
+
+  let contract = CToken.bind(Address.fromString(marketAddress));
+
+  // Handle the cCELO case (special case)
   if (marketAddress == cCELOAddress) {
-    market = new Market(marketAddress)
     market.underlyingAddress = Address.fromString(
       '0x0000000000000000000000000000000000000000',
-    )
-    market.underlyingDecimals = 18
-    market.underlyingPrice = BigDecimal.fromString('1')
-    market.underlyingName = 'Celo Coin'
-    market.underlyingSymbol = 'CELO'
-    market.underlyingPriceUSD = zeroBD
-    // It is all other CBEP20 contracts
+    );
+    market.underlyingDecimals = 18;
+    market.underlyingPrice = BigDecimal.fromString('1');
+    market.underlyingName = 'Celo Coin';
+    market.underlyingSymbol = 'CELO';
+    market.underlyingPriceUSD = zeroBD;
   } else {
-    market = new Market(marketAddress)
-    market.underlyingAddress = contract.underlying()
-    let underlyingContract = BEP20.bind(market.underlyingAddress as Address)
-    market.underlyingDecimals = underlyingContract.decimals()
-    market.underlyingName = underlyingContract.name()
-    market.underlyingSymbol = underlyingContract.symbol()
-    market.underlyingPriceUSD = zeroBD
-    market.underlyingPrice = zeroBD
+    // Default case for other markets
+    let underlyingResult = contract.try_underlying();
+
+    if (underlyingResult.reverted) {
+      // Log and handle failure gracefully
+      log.error('Failed to fetch underlying token for market {}', [marketAddress]);
+      market.underlyingAddress = Address.fromString('0x0000000000000000000000000000000000000000'); // Default address
+    } else {
+      market.underlyingAddress = underlyingResult.value;
+    }
+
+    // Ensure underlyingAddress is of type Address
+    let underlyingAddress = Address.fromString(market.underlyingAddress.toHexString());
+
+    // Bind the underlying contract for further details (such as decimals, name, etc.)
+    let underlyingContract = BEP20.bind(underlyingAddress);
+
+    let decimalsResult = underlyingContract.try_decimals();
+    market.underlyingDecimals = decimalsResult.reverted ? 18 : decimalsResult.value;
+
+    let nameResult = underlyingContract.try_name();
+    market.underlyingName = nameResult.reverted ? 'Unknown' : nameResult.value;
+
+    let symbolResult = underlyingContract.try_symbol();
+    market.underlyingSymbol = symbolResult.reverted ? 'UNKNOWN' : symbolResult.value;
+
+    // Price info
+    market.underlyingPriceUSD = zeroBD;
+    market.underlyingPrice = zeroBD;
+
     if (marketAddress == vUSDCAddress) {
-      market.underlyingPriceUSD = BigDecimal.fromString('1')
+      market.underlyingPriceUSD = BigDecimal.fromString('1');
     }
   }
 
-  let interestRateModelAddress = contract.try_interestRateModel()
-  let reserveFactor = contract.try_reserveFactorMantissa()
+  // Handle other market properties (interest rate model, reserve factor, etc.)
+  let interestRateModelAddress = contract.try_interestRateModel();
+  let reserveFactor = contract.try_reserveFactorMantissa();
 
-  market.borrowRate = zeroBD
-  market.cash = zeroBD
-  market.collateralFactor = zeroBD
-  market.exchangeRate = zeroBD
+  market.borrowRate = zeroBD;
+  market.cash = zeroBD;
+  market.collateralFactor = zeroBD;
+  market.exchangeRate = zeroBD;
+
   market.interestRateModelAddress = interestRateModelAddress.reverted
     ? Address.fromString('0x0000000000000000000000000000000000000000')
-    : interestRateModelAddress.value
-  market.name = contract.name()
-  market.reserves = zeroBD
-  market.supplyRate = zeroBD
-  market.symbol = contract.symbol()
-  market.totalBorrows = zeroBD
-  market.totalSupply = zeroBD
+    : interestRateModelAddress.value;
 
-  market.accrualBlockNumber = 0
-  market.blockTimestamp = 0
-  market.borrowIndex = zeroBD
-  market.reserveFactor = reserveFactor.reverted ? BigInt.fromI32(0) : reserveFactor.value
+  let nameResult = contract.try_name();
+  let symbolResult = contract.try_symbol();
 
-  return market
+  market.name = nameResult.reverted ? 'Unknown' : nameResult.value;
+  market.symbol = symbolResult.reverted ? 'UNKNOWN' : symbolResult.value;
+
+  market.reserves = zeroBD;
+  market.supplyRate = zeroBD;
+  market.totalBorrows = zeroBD;
+  market.totalSupply = zeroBD;
+
+  market.accrualBlockNumber = BigInt.zero();
+  market.blockTimestamp = 0;
+  market.borrowIndex = zeroBD;
+  market.reserveFactor = reserveFactor.reverted ? BigInt.fromI32(0) : reserveFactor.value;
+
+  return market;
 }
 
-function getBNBinUSD(blockNumber: i32): BigDecimal {
-  let comptroller = Comptroller.load('1')
-  let oracleAddress = comptroller.priceOracle as Address
-  let oracle = PriceOracle2.bind(oracleAddress)
-  let bnbPriceInUSD = oracle
-    .getUnderlyingPrice(Address.fromString(cCELOAddress))
-    .toBigDecimal()
-    .div(mantissaFactorBD)
-  return bnbPriceInUSD
+
+function getBNBinUSD(blockNumber: BigInt): BigDecimal {
+  let comptroller = Comptroller.load('1');
+  if (comptroller == null) {
+    log.error('Comptroller not found', []);
+    return zeroBD;
+  }
+
+  // Ensure the priceOracle exists and is valid
+  let priceOracle = comptroller.priceOracle;
+  if (!priceOracle || priceOracle.toHexString() == '0x0000000000000000000000000000000000000000') {
+    log.error('Invalid or missing priceOracle in Comptroller entity', []);
+    return zeroBD;
+  }
+
+  // Convert Bytes to Address only if it's valid
+  let oracleAddress = Address.fromBytes(priceOracle);
+
+  // Bind to the PriceOracle contract using the oracleAddress
+  let oracle = PriceOracle2.bind(oracleAddress);
+
+  // Use try_* to safely fetch the price of cCELO
+  let bnbPriceResult = oracle.try_getUnderlyingPrice(Address.fromString(cCELOAddress));
+  if (bnbPriceResult.reverted) {
+    log.error('Failed to fetch underlying price for cCELO from PriceOracle at {}', [oracleAddress.toHexString()]);
+    return zeroBD;
+  }
+
+  // Calculate the price in USD
+  let bnbPriceInUSD = bnbPriceResult.value.toBigDecimal().div(mantissaFactorBD);
+  return bnbPriceInUSD;
 }
+
 
 export function updateMarket(
   marketAddress: Address,
-  blockNumber: i32,
-  blockTimestamp: i32,
+  blockNumber: BigInt,
+  blockTimestamp: BigInt,
 ): Market {
-  let marketID = marketAddress.toHexString()
-  let market = Market.load(marketID)
+  let marketID = marketAddress.toHexString();
+  let market = Market.load(marketID);
   if (market == null) {
-    market = createMarket(marketID)
+    market = createMarket(marketID);
   }
 
-  // Only updateMarket if it has not been updated this block
-  if (market.accrualBlockNumber != blockNumber) {
-    let contractAddress = Address.fromString(market.id)
-    let contract = CToken.bind(contractAddress)
+  // Only update the market if it has not been updated this block
+  let blockNumberBigInt = blockNumber;
+  if (!market.accrualBlockNumber.equals(blockNumber)) {
+    let contractAddress = Address.fromString(market.id);
+    let contract = CToken.bind(contractAddress);
 
-    let bnbPriceInUSD = getBNBinUSD(blockNumber)
+    let bnbPriceInUSD = getBNBinUSD(blockNumberBigInt);
 
-    // if cCELO, we only update USD price
+    // Safely validate and convert `market.underlyingAddress`
+    let underlyingAddressBytes = market.underlyingAddress;
+    if (!underlyingAddressBytes || underlyingAddressBytes.toHexString() == '0x0000000000000000000000000000000000000000') {
+      log.error('Invalid underlyingAddress for market: {}', [market.id]);
+      return market as Market; // Early return with no further updates
+    }
+
+    let underlyingAddress = Address.fromBytes(underlyingAddressBytes);
+
+    // Update USD price for CELO market
     if (market.id == cCELOAddress) {
-      market.underlyingPriceUSD = bnbPriceInUSD.truncate(market.underlyingDecimals)
+      market.underlyingPriceUSD = bnbPriceInUSD.truncate(market.underlyingDecimals);
     } else {
       let tokenPriceUSD = getTokenPrice(
-        blockNumber,
+        blockNumberBigInt,
         contractAddress,
-        market.underlyingAddress as Address,
-        market.underlyingDecimals,
-      )
+        underlyingAddress, // Safely converted Address
+        BigInt.fromI32(market.underlyingDecimals)
+      );
+
       market.underlyingPrice = tokenPriceUSD
         .div(bnbPriceInUSD)
-        .truncate(market.underlyingDecimals)
-      // if USDC, we only update CELO price
+        .truncate(market.underlyingDecimals);
+
+      // Update CELO price for non-USDC markets
       if (market.id != vUSDCAddress) {
-        market.underlyingPriceUSD = tokenPriceUSD.truncate(market.underlyingDecimals)
+        market.underlyingPriceUSD = tokenPriceUSD.truncate(market.underlyingDecimals);
       }
     }
 
-    market.accrualBlockNumber = contract.accrualBlockNumber().toI32()
-    market.blockTimestamp = blockTimestamp
+    market.accrualBlockNumber = contract.accrualBlockNumber();
+    market.blockTimestamp = blockTimestamp.toI32();
     market.totalSupply = contract
       .totalSupply()
       .toBigDecimal()
-      .div(cTokenDecimalsBD)
+      .div(cTokenDecimalsBD);
 
-    /* Exchange rate explanation
-       In Practice
-        - If you call the vDAI contract on bscscan it comes back (2.0 * 10^26)
-        - If you call the vUSDC contract on bscscan it comes back (2.0 * 10^14)
-        - The real value is ~0.02. So vDAI is off by 10^28, and vUSDC 10^16
-       How to calculate for tokens with different decimals
-        - Must div by tokenDecimals, 10^market.underlyingDecimals
-        - Must multiply by ctokenDecimals, 10^8
-        - Must div by mantissa, 10^18
-     */
     market.exchangeRate = contract
       .exchangeRateStored()
       .toBigDecimal()
-      .div(exponentToBigDecimal(market.underlyingDecimals))
+      .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
       .times(cTokenDecimalsBD)
       .div(mantissaFactorBD)
-      .truncate(mantissaFactor)
+      .truncate(mantissaFactor);
+
     market.borrowIndex = contract
       .borrowIndex()
       .toBigDecimal()
       .div(mantissaFactorBD)
-      .truncate(mantissaFactor)
+      .truncate(mantissaFactor);
 
     market.reserves = contract
       .totalReserves()
       .toBigDecimal()
-      .div(exponentToBigDecimal(market.underlyingDecimals))
-      .truncate(market.underlyingDecimals)
+      .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+      .truncate(market.underlyingDecimals);
+
     market.totalBorrows = contract
       .totalBorrows()
       .toBigDecimal()
-      .div(exponentToBigDecimal(market.underlyingDecimals))
-      .truncate(market.underlyingDecimals)
+      .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+      .truncate(market.underlyingDecimals);
+
     market.cash = contract
       .getCash()
       .toBigDecimal()
-      .div(exponentToBigDecimal(market.underlyingDecimals))
-      .truncate(market.underlyingDecimals)
+      .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+      .truncate(market.underlyingDecimals);
 
-    // Must convert to BigDecimal, and remove 10^18 that is used for Exp in Chee Solidity
     market.borrowRate = contract
       .borrowRatePerBlock()
       .toBigDecimal()
       .div(mantissaFactorBD)
-      .truncate(mantissaFactor)
+      .truncate(mantissaFactor);
 
-    // This fails on only the first call to cZRX. It is unclear why, but otherwise it works.
-    // So we handle it like this.
-    let supplyRatePerBlock = contract.try_supplyRatePerBlock()
+    let supplyRatePerBlock = contract.try_supplyRatePerBlock();
     if (supplyRatePerBlock.reverted) {
-      log.info('***CALL FAILED*** : cBEP20 supplyRatePerBlock() reverted', [])
-      market.supplyRate = zeroBD
+      log.info('***CALL FAILED*** : cBEP20 supplyRatePerBlock() reverted', []);
+      market.supplyRate = zeroBD;
     } else {
       market.supplyRate = supplyRatePerBlock.value
         .toBigDecimal()
         .div(mantissaFactorBD)
-        .truncate(mantissaFactor)
+        .truncate(mantissaFactor);
     }
-    market.save()
+
+    market.save();
   }
-  return market as Market
+
+  return market as Market;
 }
+

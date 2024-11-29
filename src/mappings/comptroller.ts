@@ -9,20 +9,34 @@ import {
   NewMaxAssets,
   NewPriceOracle,
   MarketListed,
-} from '../types/Comptroller/Comptroller'
+} from '../../generated/Comptroller/Comptroller'
 
-import { CToken } from '../types/templates'
-import { Market, Comptroller, Account } from '../types/schema'
+import { CToken } from '../../generated/templates'
+import { Market, Comptroller, Account } from '../../generated/schema'
 import { mantissaFactorBD, updateCommonCTokenStats, createAccount } from './helpers'
 import { createMarket } from './markets'
+import { log } from '@graphprotocol/graph-ts'
+
 
 export function handleMarketListed(event: MarketListed): void {
   // Dynamically index all new listed tokens
-  CToken.create(event.params.cToken)
-  // Create the market for this token, since it's now been listed.
-  let market = createMarket(event.params.cToken.toHexString())
-  market.save()
+  CToken.create(event.params.cToken);
+
+  // Attempt to create the market
+  let marketAddress = event.params.cToken.toHexString();
+  let market = createMarket(marketAddress);
+
+  // Log an error and exit gracefully if market creation failed
+  if (market == null) {
+    log.error('Failed to create market for address {}', [marketAddress]);
+    return;
+  }
+
+  // Save the market if created successfully
+  market.save();
 }
+
+
 
 export function handleMarketEntered(event: MarketEntered): void {
   let market = Market.load(event.params.cToken.toHexString())
@@ -78,6 +92,9 @@ export function handleMarketExited(event: MarketExited): void {
 
 export function handleNewCloseFactor(event: NewCloseFactor): void {
   let comptroller = Comptroller.load('1')
+  if (comptroller == null) {
+    comptroller = new Comptroller('1')
+  }
   comptroller.closeFactor = event.params.newCloseFactorMantissa
   comptroller.save()
 }
@@ -98,6 +115,9 @@ export function handleNewCollateralFactor(event: NewCollateralFactor): void {
 // This should be the first event acccording to bscscan but it isn't.... price oracle is. weird
 export function handleNewLiquidationIncentive(event: NewLiquidationIncentive): void {
   let comptroller = Comptroller.load('1')
+  if (comptroller == null) {
+    comptroller = new Comptroller('1')
+  }
   comptroller.liquidationIncentive = event.params.newLiquidationIncentiveMantissa
   comptroller.save()
 }

@@ -1,4 +1,8 @@
 /* eslint-disable prefer-const */ // to satisfy AS compiler
+import { log } from '@graphprotocol/graph-ts'
+import { BigInt } from "@graphprotocol/graph-ts";
+
+
 import {
   Mint,
   Redeem,
@@ -9,7 +13,7 @@ import {
   AccrueInterest,
   NewReserveFactor,
   NewMarketInterestRateModel,
-} from '../types/templates/CToken/CToken'
+} from '../../generated/templates/CToken/CToken'
 import {
   Market,
   Account,
@@ -19,7 +23,7 @@ import {
   TransferEvent,
   BorrowEvent,
   RepayEvent,
-} from '../types/schema'
+} from '../../generated/schema'
 
 import { createMarket, updateMarket } from './markets'
 import {
@@ -45,6 +49,10 @@ import {
  */
 export function handleMint(event: Mint): void {
   let market = Market.load(event.address.toHexString())
+  if (market == null) {
+    log.error('Market not found for address: {}', [event.address.toHexString()])
+    return // Exit the function if no market is found
+  }
   let mintID = event.transaction.hash
     .toHexString()
     .concat('-')
@@ -56,7 +64,8 @@ export function handleMint(event: Mint): void {
     .truncate(cTokenDecimals)
   let underlyingAmount = event.params.mintAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   let mint = new MintEvent(mintID)
@@ -84,6 +93,10 @@ export function handleMint(event: Mint): void {
  */
 export function handleRedeem(event: Redeem): void {
   let market = Market.load(event.address.toHexString())
+  if (market == null) {
+    log.error('Market not found for address: {}', [event.address.toHexString()])
+    return // Exit the function if no market is found
+  }
   let redeemID = event.transaction.hash
     .toHexString()
     .concat('-')
@@ -95,7 +108,8 @@ export function handleRedeem(event: Redeem): void {
     .truncate(cTokenDecimals)
   let underlyingAmount = event.params.redeemAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   let redeem = new RedeemEvent(redeemID)
@@ -120,6 +134,10 @@ export function handleRedeem(event: Redeem): void {
  */
 export function handleBorrow(event: Borrow): void {
   let market = Market.load(event.address.toHexString())
+  if (market == null) {
+    log.error('Market not found for address: {}', [event.address.toHexString()])
+    return // Exit the function if no market is found
+  }
   let accountID = event.params.borrower.toHex()
   let account = Account.load(accountID)
   if (account == null) {
@@ -142,11 +160,13 @@ export function handleBorrow(event: Borrow): void {
 
   let borrowAmountBD = event.params.borrowAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
 
   cTokenStats.storedBorrowBalance = event.params.accountBorrows
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   cTokenStats.accountBorrowIndex = market.borrowIndex
@@ -162,12 +182,14 @@ export function handleBorrow(event: Borrow): void {
 
   let borrowAmount = event.params.borrowAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   let accountBorrows = event.params.accountBorrows
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   let borrow = new BorrowEvent(borrowID)
@@ -196,6 +218,10 @@ export function handleBorrow(event: Borrow): void {
  */
 export function handleRepayBorrow(event: RepayBorrow): void {
   let market = Market.load(event.address.toHexString())
+  if (market == null) {
+    log.error('Market not found for address: {}', [event.address.toHexString()])
+    return // Exit the function if no market is found
+  }
   let accountID = event.params.borrower.toHex()
   let account = Account.load(accountID)
   if (account == null) {
@@ -216,11 +242,13 @@ export function handleRepayBorrow(event: RepayBorrow): void {
 
   let repayAmountBD = event.params.repayAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
 
   cTokenStats.storedBorrowBalance = event.params.accountBorrows
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   cTokenStats.accountBorrowIndex = market.borrowIndex
@@ -236,12 +264,14 @@ export function handleRepayBorrow(event: RepayBorrow): void {
 
   let repayAmount = event.params.repayAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   let accountBorrows = event.params.accountBorrows
     .toBigDecimal()
-    .div(exponentToBigDecimal(market.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(market.underlyingDecimals)))
+    //.div(exponentToBigDecimal(market.underlyingDecimals))
     .truncate(market.underlyingDecimals)
 
   let repay = new RepayEvent(repayID)
@@ -293,7 +323,15 @@ export function handleLiquidateBorrow(event: LiquidateBorrow): void {
   // the underwater borrower. So we must get that address from the event, and
   // the repay token is the event.address
   let marketRepayToken = Market.load(event.address.toHexString())
+  if (marketRepayToken == null) {
+    log.error('Market not found for repayment token address: {}', [event.address.toHexString()])
+    return // Exit the function if no market is found
+  }
   let marketCTokenLiquidated = Market.load(event.params.cTokenCollateral.toHexString())
+  if (marketCTokenLiquidated == null) {
+    log.error('Market not found for cToken collateral address: {}', [event.params.cTokenCollateral.toHexString()])
+    return // Exit the function if no market is found
+  }
   let mintID = event.transaction.hash
     .toHexString()
     .concat('-')
@@ -305,7 +343,8 @@ export function handleLiquidateBorrow(event: LiquidateBorrow): void {
     .truncate(cTokenDecimals)
   let underlyingRepayAmount = event.params.repayAmount
     .toBigDecimal()
-    .div(exponentToBigDecimal(marketRepayToken.underlyingDecimals))
+    .div(exponentToBigDecimal(BigInt.fromI32(marketRepayToken.underlyingDecimals)))
+    //.div(exponentToBigDecimal(marketRepayToken.underlyingDecimals))
     .truncate(marketRepayToken.underlyingDecimals)
 
   let liquidation = new LiquidationEvent(mintID)
@@ -340,13 +379,36 @@ export function handleTransfer(event: Transfer): void {
   // with normal transfers, since mint, redeem, and seize transfers will already run updateMarket()
   let marketID = event.address.toHexString()
   let market = Market.load(marketID)
-  if (market.accrualBlockNumber != event.block.number.toI32()) {
-    market = updateMarket(
-      event.address,
-      event.block.number.toI32(),
-      event.block.timestamp.toI32(),
-    )
+  if (market == null) {
+    log.error('Market not found for address: {}', [marketID])
+    return // Exit if market not found
   }
+  //let blockNumberAsBigInt = event.block.number;
+  //let blockNumberAsBigInt = BigInt.fromI32(event.block.number)
+
+// Initialize market.accrualBlockNumber if undefined
+if ( market.accrualBlockNumber.isZero()) {                                                              //(!market.accrualBlockNumber.equals(blockNumberAsBigInt)){                                                                              //(market.accrualBlockNumber.isZero()) {
+  market.accrualBlockNumber = BigInt.zero();
+}
+
+// Update market only if accrualBlockNumber is outdated
+if (!market.accrualBlockNumber.equals(event.block.number)) {
+  let updatedMarket = updateMarket(
+    event.address,
+    event.block.number,
+    event.block.timestamp
+  );
+
+  market.save();
+}
+
+  //if (market.accrualBlockNumber != event.block.number.toI32()) {
+    //market = updateMarket(
+    //  event.address,
+   //  event.block.number.toI32(),
+    //  event.block.timestamp.toI32(),
+   // )
+ // }
 
   let amountUnderlying = market.exchangeRate.times(
     event.params.amount.toBigDecimal().div(cTokenDecimalsBD),
@@ -439,12 +501,17 @@ export function handleTransfer(event: Transfer): void {
 }
 
 export function handleAccrueInterest(event: AccrueInterest): void {
-  updateMarket(event.address, event.block.number.toI32(), event.block.timestamp.toI32())
+  updateMarket(event.address, BigInt.fromI32(event.block.number.toI32()), BigInt.fromI32(event.block.timestamp.toI32()));
+  //updateMarket(event.address, event.block.number.toI32(), event.block.timestamp.toI32())
 }
 
 export function handleNewReserveFactor(event: NewReserveFactor): void {
   let marketID = event.address.toHex()
   let market = Market.load(marketID)
+  if (market == null) {
+    log.error('Market not found for address: {}', [marketID])
+    return // Exit if market not found
+  }
   market.reserveFactor = event.params.newReserveFactorMantissa
   market.save()
 }

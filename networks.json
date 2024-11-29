@@ -1,0 +1,8 @@
+{
+  "celo": {
+    "Unitroller": {
+      "address": "0x9BD4Fd10b531ae07437676dfE3FA6f505032CB64",
+      "startBlock": 11760160
+    }
+  }
+}
